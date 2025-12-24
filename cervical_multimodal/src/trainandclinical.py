@@ -11,9 +11,11 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 # --- Configuration and Paths ---
 # Define directories relative to this script's location
-BASE_DIR = os.path.dirname(os.path.abspath(r"C:\Users\user\OneDrive\Desktop\cervical-ai\cervical_multimodal\data"))
+# Define directories relative to this script's location
+CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(CURRENT_SCRIPT_DIR) # .../cervical_multimodal
 DATA_PATH = os.path.join(BASE_DIR, "data", "cervical-cancer.csv")
-MODELS_DIR = os.path.join(r"C:\Users\user\OneDrive\Desktop\cervical-ai\cervical_multimodal", "models")
+MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 
 # Ensure the models directory exists

@@ -44,7 +44,7 @@ class PatientProfile(models.Model):
 
 # ---------------- PATIENT RECORDS ----------------
 def pap_image_upload_to(instance, filename):
-    return f"uploads/pap_images/{instance.patient.user.id}/{filename}"
+    return f"pap_images/{instance.patient.user.id}/{filename}"
 
 class PatientRecord(models.Model):
     patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE, related_name='records')

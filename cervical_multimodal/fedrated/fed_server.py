@@ -12,7 +12,10 @@ import os
 # 1. DJANGO SETUP & IMPORTS
 # ====================================================================
 # We assume setup_django_environment is imported and called here
-from .setup_django import setup_django_environment
+try:
+    from .setup_django import setup_django_environment
+except ImportError:
+    from setup_django import setup_django_environment
 setup_django_environment()
 from cervical.models import PatientRecord # Example model import
 
@@ -47,7 +50,7 @@ def start_server():
     print("Starting Flower server...")
     
     # 🛑 FIX: Use a new, less common port (8088) for the server.
-    SERVER_ADDRESS = "0.0.0.0:8090" 
+    SERVER_ADDRESS = "0.0.0.0:8091" 
     
     # Flower server configuration
     fl.server.start_server(

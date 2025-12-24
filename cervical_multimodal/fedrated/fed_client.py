@@ -11,7 +11,10 @@ from typing import Tuple, Dict, List
 from collections import OrderedDict
 
 # Import the real data loader
-from .real_data import load_local_data
+try:
+    from .real_data import load_local_data
+except ImportError:
+    from real_data import load_local_data
 
 # --- Model Definition (Vision Transformer) ---
 def build_model(num_classes: int):
@@ -136,7 +139,7 @@ def train_locally(client_id=None):
         # Use a timeout or run in a separate thread/process in production.
         # For now, we run it. Note: 'start_numpy_client' is blocking. 
         fl.client.start_numpy_client(
-            server_address="127.0.0.1:8090", 
+            server_address="127.0.0.1:8091", 
             client=client
         )
     except Exception as e:

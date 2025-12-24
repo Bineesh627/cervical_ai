@@ -72,7 +72,7 @@ cd cervical_multimodal
 python fedrated/fed_server.py
 ```
 
-_The server will listen on port 8090._
+_The server will listen on port 8091._
 
 ### 2. Start the Web Application
 
