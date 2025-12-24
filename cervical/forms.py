@@ -218,3 +218,29 @@ class PatientProfileUpdateForm(forms.ModelForm):
             user.save()
             profile.save()
         return profile
+
+
+# ---------------- DOCTOR PROFILE UPDATE ----------------
+class DoctorProfileUpdateForm(forms.ModelForm):
+    first_name = forms.CharField(max_length=30, required=True, label="First Name")
+    last_name = forms.CharField(max_length=30, required=True, label="Last Name")
+
+    class Meta:
+        model = DoctorProfile
+        fields = ['first_name', 'last_name', 'doctor_id', 'hospital']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.user:
+            self.fields['first_name'].initial = self.instance.user.first_name
+            self.fields['last_name'].initial = self.instance.user.last_name
+
+    def save(self, commit=True):
+        profile = super().save(commit=False)
+        user = profile.user
+        user.first_name = self.cleaned_data['first_name']
+        user.last_name = self.cleaned_data['last_name']
+        if commit:
+            user.save()
+            profile.save()
+        return profile

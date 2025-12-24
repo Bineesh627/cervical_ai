@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from ml_engine.predict_wrappers import multimodal_predict
 from ..forms import DoctorNewPatientForm, PapImageForm
-from ..models import PatientProfile, PatientRecord, PatientDoubt, User
+from ..models import PatientProfile, PatientRecord, PatientDoubt, User, DoctorProfile
 from .utils import is_doctor, clean_path
 
 # ---------------- DOCTOR VIEWS ----------------
@@ -183,3 +183,99 @@ def doctor_view_patient_record(request, record_id):
     
     # Reusing the shared template
     return render(request, 'cervical/shared/patient_detail.html', {'rec': rec, 'doubts': doubts})
+
+
+@login_required
+@user_passes_test(is_doctor)
+def doctor_messages_view(request):
+    """Dedicated page for doctors to view and manage all patient doubts/messages."""
+    # Filter parameter for answered/unanswered
+    filter_type = request.GET.get('filter', 'all')
+    
+    # Base queryset with related data for efficiency
+    doubts_qs = PatientDoubt.objects.select_related(
+        'record__patient__user', 
+        'sender'
+    ).order_by('-created_at')
+    
+    # Apply filter
+    if filter_type == 'unanswered':
+        doubts_qs = doubts_qs.filter(is_answered=False)
+    elif filter_type == 'answered':
+        doubts_qs = doubts_qs.filter(is_answered=True)
+    # 'all' shows everything
+    
+    # Get counts for filter tabs
+    total_count = PatientDoubt.objects.count()
+    unanswered_count = PatientDoubt.objects.filter(is_answered=False).count()
+    answered_count = PatientDoubt.objects.filter(is_answered=True).count()
+    
+    context = {
+        'doubts': doubts_qs,
+        'filter_type': filter_type,
+        'total_count': total_count,
+        'unanswered_count': unanswered_count,
+        'answered_count': answered_count,
+    }
+    
+    return render(request, 'cervical/doctor/doctor_messages.html', context)
+
+
+@login_required
+@user_passes_test(is_doctor)
+def doctor_reply_doubt(request, doubt_id):
+    """Handle doctor replies to patient doubts."""
+    if request.method != 'POST':
+        messages.error(request, "Invalid request method.")
+        return redirect('doctor_messages')
+    
+    doubt = get_object_or_404(PatientDoubt, id=doubt_id)
+    reply_text = request.POST.get('reply_text', '').strip()
+    
+    if not reply_text:
+        messages.warning(request, "Reply text cannot be empty.")
+        return redirect('doctor_messages')
+    
+    # Save the reply
+    doubt.answer = reply_text
+    doubt.is_answered = True
+    doubt.answered_at = timezone.now()
+    doubt.save()
+    
+    messages.success(request, f"Reply sent successfully to {doubt.sender.email}.")
+    
+    # Redirect back to messages page, preserving filter if any
+    filter_param = request.POST.get('filter', 'all')
+    return redirect(f"{request.build_absolute_uri('/doctor/messages/')}?filter={filter_param}".replace(request.build_absolute_uri('/'), '/'))
+
+
+@login_required
+@user_passes_test(is_doctor)
+def doctor_profile_view(request):
+    """Display doctor's profile information."""
+    doctor_profile = get_object_or_404(DoctorProfile, user=request.user)
+    
+    return render(request, 'cervical/doctor/doctor_profile.html', {
+        'doctor_profile': doctor_profile,
+        'user': request.user
+    })
+
+
+@login_required
+@user_passes_test(is_doctor)
+def doctor_profile_update(request):
+    """Handle doctor profile updates."""
+    from ..forms import DoctorProfileUpdateForm
+    
+    doctor_profile = get_object_or_404(DoctorProfile, user=request.user)
+    
+    if request.method == 'POST':
+        form = DoctorProfileUpdateForm(request.POST, instance=doctor_profile)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Profile updated successfully.")
+            return redirect('doctor_profile')
+    else:
+        form = DoctorProfileUpdateForm(instance=doctor_profile)
+    
+    return render(request, 'cervical/doctor/doctor_profile_update.html', {'form': form})

@@ -419,6 +419,27 @@
         pointer-events: none;
         z-index: 10;
       }
+
+      /* Login Error Message */
+      .login-error-message {
+        background-color: rgba(239, 68, 68, 0.1);
+        border: 1px solid #ef4444;
+        color: #ef4444;
+        padding: 12px 15px;
+        border-radius: 8px;
+        font-size: 13px;
+        margin: 15px 0;
+        text-align: center;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .login-error-message i {
+        font-size: 14px;
+      }
     </style>
   </head>
 
@@ -653,6 +674,18 @@
         <form method="post" action="/login/">
           {% csrf_token %}
           <h1>Secure Login</h1>
+          
+          <!-- Error Messages Display -->
+          {% if messages %}
+            {% for message in messages %}
+              {% if message.tags == 'error' %}
+              <div class="login-error-message">
+                <i class="fas fa-exclamation-circle"></i> {{ message }}
+              </div>
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+          
           <div class="form-field-wrapper">
             <input
               type="text"

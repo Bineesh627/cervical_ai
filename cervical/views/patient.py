@@ -208,6 +208,20 @@ def patient_detail(request, record_id):
 
 
 @login_required
+def patient_profile_view(request):
+    """Display patient's profile information."""
+    if request.user.role != 'patient':
+        return redirect('doctor_dashboard')
+    
+    profile = get_object_or_404(PatientProfile, user=request.user)
+    
+    return render(request, 'cervical/patient/patient_profile.html', {
+        'profile': profile,
+        'user': request.user
+    })
+
+
+@login_required
 def update_patient_profile(request):
     """Handles updating a patient's profile details."""
     profile = get_object_or_404(PatientProfile, user=request.user)

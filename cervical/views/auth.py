@@ -105,10 +105,8 @@ def user_login(request):
                 return redirect('auth_container')
 
         else:
-            print("\n--- LOGIN FAILED ---")
-            print(form.errors)
-            print("--------------------\n")
-            messages.error(request, "Invalid login credentials.")
+            # Login failed - form has errors, they will be displayed in template
+            messages.error(request, "Invalid email or password. Please try again.")
 
     context = {
         'login_form': form,

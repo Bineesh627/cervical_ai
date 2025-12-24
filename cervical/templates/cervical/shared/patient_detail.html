@@ -107,9 +107,9 @@
             available.
           </p>
           {% endif %}
-
+          
+          {% if user.role == 'patient' %}
           <hr class="my-4" />
-
           {% if rec.fused_label == 'High' %}
           <div
             class="alert alert-danger p-3 mb-4 d-flex justify-content-between align-items-center flex-wrap"
@@ -125,6 +125,7 @@
           </div>
           {% endif %}
 
+          
           <h5 class="mb-3">Ask a Doubt</h5>
           <form method="post">
             {% csrf_token %}
@@ -139,6 +140,28 @@
               Send to Doctor
             </button>
           </form>
+          
+          <!-- Display Previous Doubts and Replies -->
+          {% if doubts %}
+          <hr class="my-4" />
+          <h5 class="mb-3">Your Questions & Replies</h5>
+          {% for doubt in doubts %}
+          <div class="doubt-card mb-3 p-3 border rounded {% if doubt.is_answered %}bg-light{% else %}bg-warning-subtle{% endif %}">
+            <p class="mb-2"><strong>Q:</strong> {{ doubt.question }}</p>
+            <small class="text-muted">Asked on {{ doubt.created_at|date:"M d, Y H:i" }}</small>
+            
+            {% if doubt.is_answered %}
+            <hr class="my-2" />
+            <p class="mb-2 text-success"><strong><i class="fas fa-reply"></i> Doctor's Reply:</strong></p>
+            <p class="mb-1">{{ doubt.answer }}</p>
+            <small class="text-muted">Replied on {{ doubt.answered_at|date:"M d, Y H:i" }}</small>
+            {% else %}
+            <p class="mt-2 mb-0"><span class="badge bg-warning">Waiting for reply...</span></p>
+            {% endif %}
+          </div>
+          {% endfor %}
+          {% endif %}
+          {% endif %}
 
           {% if user.role == 'doctor' %}
           <hr class="my-4" />

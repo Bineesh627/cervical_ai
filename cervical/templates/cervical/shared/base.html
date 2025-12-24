@@ -121,9 +121,7 @@
         {% if user.is_authenticated %} {% if user.role == 'doctor' %}
         <a href="{% url 'doctor_dashboard' %}" class="btn">Doctor Dashboard</a>
         <a href="{% url 'doctor_predict' %}" class="btn primary">Predict</a>
-        <a href="{% url 'doctor_dashboard' %}#messages" class="btn"
-          >💬 Messages</a
-        >
+        <a href="{% url 'doctor_messages' %}" class="btn">💬 Messages</a>
 
         {% elif user.role == 'patient' %}
         <a href="{% url 'patient_dashboard' %}" class="btn">Dashboard</a>
@@ -138,13 +136,9 @@
 
           <div class="dropdown-content">
             {% if user.role == 'patient' %}
-            <a href="{% url 'patient_dashboard' %}#profile"
-              ><i class="fas fa-id-card-alt"></i> View Profile</a
-            >
+            <a href="{% url 'patient_profile' %}"><i class="fas fa-id-card-alt"></i> View Profile</a>
             {% elif user.role == 'doctor' %}
-            <a href="{% url 'doctor_dashboard' %}#profile"
-              ><i class="fas fa-id-card-alt"></i> My Profile</a
-            >
+            <a href="{% url 'doctor_profile' %}"><i class="fas fa-id-card-alt"></i> My Profile</a>
             {% endif %}
             <a href="{% url 'logout' %}" class="danger-link"
               ><i class="fas fa-sign-out-alt"></i> Logout</a

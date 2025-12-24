@@ -16,26 +16,26 @@ urlpatterns = [
     path('login/', views.user_login, name='user_login'), 
     
     path('logout/', views.user_logout, name='logout'),
-    path('patient/profile/update/', views.update_patient_profile, name='update_patient_profile'),
 
-
-#path('doctor/messages/', views.doctor_messages_view, name='doctor_messages'),
+    # Doctor Messages
+    path('doctor/messages/', views.doctor_messages_view, name='doctor_messages'),
+    path('doctor/messages/reply/<int:doubt_id>/', views.doctor_reply_doubt, name='doctor_reply_doubt'),
 
     # Existing record view path (needed for the reply form action)
     path('doctor/record/<int:record_id>/', views.doctor_view_patient_record, name='doctor_view_patient_record'),
 
-
-
-
-
     # Patient
     path('patient/dashboard/', views.patient_dashboard, name='patient_dashboard'),
+    path('patient/profile/', views.patient_profile_view, name='patient_profile'),
+    path('patient/profile/edit/', views.update_patient_profile, name='update_patient_profile'),
     path('patient/clinical/', views.clinical_entry, name='clinical_entry'),
     path('patient/upload/', views.upload_pap, name='upload_pap'),
     path('patient/record/<int:record_id>/', views.patient_detail, name='patient_detail'),
 
     # Doctor
     path('doctor/dashboard/', views.doctor_dashboard, name='doctor_dashboard'),
+    path('doctor/profile/', views.doctor_profile_view, name='doctor_profile'),
+    path('doctor/profile/edit/', views.doctor_profile_update, name='doctor_profile_update'),
     path('doctor/predict/', views.doctor_predict, name='doctor_predict'),
     path('doctor/record/<int:record_id>/', views.doctor_view_patient_record, name='doctor_view_patient_record'),
 
