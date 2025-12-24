@@ -50,12 +50,11 @@ Key to this project is the integration of **Federated Learning (FL)**. This ensu
 3.  **Install Dependencies**
 
     ```bash
-    pip install -r cervical_multimodal/requirements.txt
+    pip install -r requirements.txt
     ```
 
 4.  **Database Migrations**
     ```bash
-    cd cervical_multimodal
     python manage.py migrate
     ```
 
@@ -68,7 +67,6 @@ To fully utilize the system, you need to run the Federated Learning server and t
 This server coordinates the global model updates. Open a terminal and run:
 
 ```bash
-cd cervical_multimodal
 python fedrated/fed_server.py
 ```
 
@@ -79,7 +77,6 @@ _The server will listen on port 8091._
 Open a **new terminal**, activate the environment, and run the Django development server:
 
 ```bash
-cd cervical_multimodal
 python manage.py runserver
 ```
 

@@ -6,9 +6,8 @@ __pycache__/
 # custom removing
 myenv/
 data/
-cervical_multimodal/data/
-cervical_multimodal/models/
-cervical_multimodal/cervical/static/cervical/uploads/
+models/
+cervical/static/cervical/uploads/
 
 
 # C extensions

@@ -1,11 +1,11 @@
-{% extends 'cervical/base.html' %} {% load static %} {% block content %}
-
+ {% extends 'cervical/shared/base.html' %} {% load static %} {% block content %}
+{% comment %}
 <div class="dashboard-layout">
   <aside class="side-panel">
     <div class="profile-header-card">
       <i class="fas fa-user-shield profile-icon"></i>
       <h3 class="profile-name">
-        {{ profile.user.get_full_name|default:profile.user.email }}
+        {{ profile.user.get_full_name|default:'Patient User' }}
       </h3>
       <span class="profile-role">Patient ID: {{ profile.user.id }}</span>
     </div>
@@ -57,10 +57,9 @@
     {% for r in records %}
     <div class="test-record-card">
       <header class="record-card-header">
-        <span class="test-date-time"
-          ><i class="far fa-clock"></i> {{ r.created_at|date:"F j, Y, h:i A"
-          }}</span
-        >
+        <span class="test-date-time">
+          <i class="far fa-clock"></i> {{ r.created_at|date:"F j, Y, h:i A" }}
+        </span>
 
         <div class="status-tags">
           {% if r.referral_status == 'R' %}
@@ -87,34 +86,34 @@
         </a>
       </header>
 
-      <div class="prediction-summary-grid">
-        <div class="prediction-tile clinical-tile">
-          <div class="tile-header">
-            <i class="fas fa-stethoscope"></i> Clinical Prediction
-          </div>
-          <div class="tile-body">
-            <span
-              class="tile-label-main label-{{ r.clinical_pred_label|lower }}"
-              >{{ r.clinical_pred_label|default:'N/A' }}</span
-            >
-            <span class="tile-score"
-              >Risk Score: {{ r.clinical_risk_score|floatformat:2|default:'N/A'
-              }}</span
-            >
-          </div>
-        </div>
+<div class="prediction-summary-grid">
+  <div class="prediction-tile clinical-tile">
+    <div class="tile-header">
+      <i class="fas fa-stethoscope"></i> Clinical Prediction
+    </div>
+    <div class="tile-body">
+      <span class="tile-label-main label-{{ record.clinical_pred_label|default:'n/a'|lower }}">
+        {{ record.clinical_pred_label|default:'N/A' }}
+      </span>
+      <span class="tile-score">
+        Risk Score: {{ record.clinical_risk_score|default:'N/A'|floatformat:3 }}
+      </span>
+    </div>
+  </div>
+</div>
+
 
         <div class="prediction-tile image-tile">
           <div class="tile-header">
             <i class="fas fa-microscope"></i> Image Prediction
           </div>
           <div class="tile-body">
-            <span class="tile-label-main label-{{ r.image_label|lower }}"
-              >{{ r.image_label|default:'N/A' }}</span
-            >
-            <span class="tile-score"
-              >Probability: {{ r.image_prob|floatformat:2|default:'N/A' }}</span
-            >
+            <span class="tile-label-main label-{{ r.image_label|lower }}">
+              {{ r.image_label|default:'N/A' }}
+            </span>
+            <span class="tile-score">
+              Probability: {{ r.image_prob|floatformat:2|default:'N/A' }}
+            </span>
           </div>
         </div>
 
@@ -123,13 +122,12 @@
             <i class="fas fa-brain"></i> Fused Final Result
           </div>
           <div class="tile-body">
-            <span class="tile-label-final label-{{ r.fused_label|lower }}"
-              >{{ r.fused_label|default:'N/A' }}</span
-            >
-            <span class="tile-score"
-              >Fusion Score: {{ r.fused_score|floatformat:2|default:'N/A'
-              }}</span
-            >
+            <span class="tile-label-final label-{{ r.fused_label|lower }}">
+              {{ r.fused_label|default:'N/A' }}
+            </span>
+            <span class="tile-score">
+              Fusion Score: {{ r.fused_score|floatformat:2|default:'N/A' }}
+            </span>
           </div>
         </div>
       </div>
@@ -139,11 +137,10 @@
           <i class="fas fa-chart-bar"></i> AI Explanation:
         </h6>
         <div class="visuals-container">
-          {% if r.gradcam_path or r.clinical_shap_path %} {% if r.gradcam_path
-          %}
+          {% if r.gradcam_path %}
           <figure class="visual-figure">
             <img
-              src="{% static r.gradcam_path %}"
+              src="{% static r.gradcam_path|slice:'7:' %}"
               alt="GradCAM Visualization"
               title="Image Explanation (Grad-CAM)"
             />
@@ -152,13 +149,13 @@
           {% endif %} {% if r.clinical_shap_path %}
           <figure class="visual-figure">
             <img
-              src="{% static r.clinical_shap_path %}"
+              src="{% static r.clinical_shap_path|slice:'7:' %}"
               alt="SHAP Explanation"
               title="Clinical Explanation (SHAP)"
             />
             <figcaption>SHAP Plot</figcaption>
           </figure>
-          {% endif %} {% else %}
+          {% endif %} {% if not r.gradcam_path and not r.clinical_shap_path %}
           <p class="no-visuals-text">
             <i class="fas fa-eye-slash"></i> No detailed visualizations
             available for this test.
@@ -168,7 +165,6 @@
       </div>
     </div>
     {% empty %}
-
     <div class="empty-state-advanced">
       <i class="fas fa-folder-open"></i>
       <p>Your record history is currently empty.</p>
@@ -180,10 +176,168 @@
         <i class="fas fa-vial"></i> Initiate New Test
       </a>
     </div>
+    {% endfor %}
+  </section>
+</div> {% endcomment %}
 
+<div class="dashboard-layout">
+  <aside class="side-panel">
+    <div class="profile-header-card">
+      <i class="fas fa-user-shield profile-icon"></i>
+      <h3 class="profile-name">
+        {{ profile.user.get_full_name|default:'Patient User' }}
+      </h3>
+      <span class="profile-role">Patient ID: {{ profile.user.id }}</span>
+    </div>
+
+    <div class="data-block">
+      <h4 class="block-title"><i class="fas fa-id-card-alt"></i> Personal Details</h4>
+      <div class="data-grid">
+        <div class="data-item">
+          <span class="data-label"><i class="fas fa-venus-mars"></i> Sex</span>
+          <span class="data-value">{{ profile.sex|default:'N/A' }}</span>
+        </div>
+        <div class="data-item">
+          <span class="data-label"><i class="fas fa-calendar-alt"></i> Age</span>
+          <span class="data-value">{{ profile.age|default:'N/A' }}</span>
+        </div>
+        <div class="data-item">
+          <span class="data-label"><i class="fas fa-tint"></i> Blood Group</span>
+          <span class="data-value">{{ profile.blood_group|default:'N/A' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-buttons-stack">
+      <a href="{% url 'clinical_entry' %}" class="action-btn-primary">
+        <i class="fas fa-notes-medical"></i> Enter Clinical Data
+      </a>
+      <a href="{% url 'upload_pap' %}" class="action-btn-secondary">
+        <i class="fas fa-upload"></i> Upload Pap Image
+      </a>
+      {% comment %} <a href="{% url 'update_patient_profile' %}" class="action-btn-tertiary">
+        <i class="fas fa-user-edit"></i> Edit Profile
+      </a> {% endcomment %}
+    </div>
+  </aside>
+
+  <section class="main-content">
+    <h2 class="section-title"><i class="fas fa-history"></i> Comprehensive Test History</h2>
+
+    {% for r in records %}
+    <div class="test-record-card">
+      <header class="record-card-header">
+        <span class="test-date-time">
+          <i class="far fa-clock"></i> {{ r.created_at|date:"F j, Y, h:i A" }}
+        </span>
+
+        <div class="status-tags">
+          {% if r.referral_status == 'R' %}
+            <span class="tag-alert referred-tag"><i class="fas fa-user-md"></i> Consult Required</span>
+          {% elif r.fused_label == 'High' %}
+            <span class="tag-alert high-risk-tag"><i class="fas fa-radiation"></i> High Risk Result</span>
+          {% elif r.fused_label == 'Medium' %}
+            <span class="tag-alert medium-risk-tag"><i class="fas fa-exclamation-circle"></i> Medium Risk</span>
+          {% else %}
+            <span class="tag-alert low-risk-tag"><i class="fas fa-check-circle"></i> Low Risk</span>
+          {% endif %}
+        </div>
+
+        <a href="{% url 'patient_detail' r.id %}" class="view-details-link">
+          View Full Report <i class="fas fa-arrow-right"></i>
+        </a>
+      </header>
+
+      <div class="prediction-summary-grid">
+        <!-- Clinical -->
+        <div class="prediction-tile clinical-tile">
+          <div class="tile-header"><i class="fas fa-stethoscope"></i> Clinical Prediction</div>
+          <div class="tile-body">
+            <span class="tile-label-main label-{{ r.clinical_pred_label|default:'n/a' }}">
+              {{ r.clinical_pred_label|default:'N/A' }}
+            </span>
+            <span class="tile-score">
+              {% if r.clinical_risk_score is not None %}
+                Risk Score: {{ r.clinical_risk_score|floatformat:10 }}
+              {% else %}
+                Risk Score: N/A
+              {% endif %}
+            </span>
+          </div>
+        </div>
+
+        <!-- Image -->
+          <div class="prediction-tile image-tile">
+            <div class="tile-header"><i class="fas fa-microscope"></i> Image Prediction</div>
+            <div class="tile-body">
+              <span class="tile-label-main label-{{ r.image_label|default_if_none:'n-a'|lower }}">
+                {{ r.image_label|default_if_none:'N/A' }}
+              </span>
+              <span class="tile-score" title="{{ r.image_prob }}">
+                {% if r.image_prob is not None %}
+                  Probability: {{ r.image_prob|floatformat:10 }}
+                {% else %}
+                  Probability: N/A
+                {% endif %}
+              </span>
+            </div>
+          </div>
+
+          <!-- Fused -->
+          <div class="prediction-tile fused-tile">
+            <div class="tile-header"><i class="fas fa-brain"></i> Fused Final Result</div>
+            <div class="tile-body">
+              <span class="tile-label-final label-{{ r.fused_label|default_if_none:'n-a'|lower }}">
+                {{ r.fused_label|default_if_none:'N/A' }}
+              </span>
+              <span class="tile-score" title="{{ r.fused_score }}">
+                {% if r.fused_score is not None %}
+                  Fusion Score: {{ r.fused_score|floatformat:10 }}
+                {% else %}
+                  Fusion Score: N/A
+                {% endif %}
+              </span>
+            </div>
+          </div>
+        </div>
+
+      <div class="explanation-visuals-section">
+        <h6 class="visual-section-title"><i class="fas fa-chart-bar"></i> AI Explanation:</h6>
+        <div class="visuals-container">
+          {% if r.gradcam_path %}
+            <figure class="visual-figure">
+              <img src="{% static r.gradcam_path %}" alt="GradCAM Visualization" title="Image Explanation (Grad-CAM)" />
+              <figcaption>Grad-CAM</figcaption>
+            </figure>
+          {% endif %}
+
+          {% if r.clinical_shap_path %}
+            <figure class="visual-figure">
+              <img src="{% static r.clinical_shap_path %}" alt="SHAP Explanation" title="Clinical Explanation (SHAP)" />
+              <figcaption>SHAP Plot</figcaption>
+            </figure>
+          {% endif %}
+
+          {% if not r.gradcam_path and not r.clinical_shap_path %}
+            <p class="no-visuals-text"><i class="fas fa-eye-slash"></i> No detailed visualizations available for this test.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% empty %}
+      <div class="empty-state-advanced">
+        <i class="fas fa-folder-open"></i>
+        <p>Your record history is currently empty.</p>
+        <p>Start your journey by submitting a new test for analysis.</p>
+        <a href="{% url 'clinical_entry' %}" class="action-btn-primary large-empty-btn">
+          <i class="fas fa-vial"></i> Initiate New Test
+        </a>
+      </div>
     {% endfor %}
   </section>
 </div>
+
+
 
 <style>
   /* --- 1. MODERN COLOR PALETTE & VARIABLES --- */
@@ -191,7 +345,7 @@
     --color-bg-primary: #121926; /* Dark Navy/Black for main background */
     --color-card-primary: #1e293b; /* Deep Slate Blue for cards */
     --color-card-secondary: #273449; /* Slightly lighter card hover/subtle elements */
-    --color-accent-primary: #34d399; /* Bright mint green for primary actions (Success/High visibility) */
+    --color-accent-primary: #34d399; /* Bright mint green for primary actions (Success/Low Risk) */
     --color-accent-secondary: #60a5fa; /* Cool blue for secondary actions/icons */
     --color-text-light: #f1f5f9; /* Off-white for main text */
     --color-text-muted: #94a3b8; /* Slate gray for secondary text/labels */
@@ -258,12 +412,16 @@
     font-size: 0.9rem;
   }
 
-  .data-block {
+  /* Inside the <style> block, around line 214 */
+
+.data-block {
     background-color: var(--color-card-primary);
     padding: 20px;
     border-radius: 10px;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-  }
+    /* 💥 INCREASED NEGATIVE MARGIN TO REDUCE GAP */
+    margin-bottom: -25px; 
+}
   .block-title {
     color: var(--color-accent-secondary);
     font-size: 1.1rem;
@@ -617,4 +775,4 @@
   }
 </style>
 
-{% endblock %}
+{% endblock content %}
