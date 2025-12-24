@@ -1,0 +1,3 @@
+import os
+os.path.exists(os.path.join(BASE_DIR, "cervical", "static", rec.gradcam_path))
+os.path.exists(os.path.join(BASE_DIR, "cervical", "static", rec.clinical_shap_path))

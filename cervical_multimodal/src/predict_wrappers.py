@@ -1,0 +1,307 @@
+import os
+import joblib
+import torch
+import torch.nn as nn
+from torchvision import models as tvmodels, transforms
+from PIL import Image
+import pandas as pd
+from django.conf import settings # Import Django settings for static path prefix
+
+# Use relative imports for modules within the 'src' package
+from .gradcam import generate_gradcam
+from .shap_explain import generate_shap
+# Assuming you have a file named 'fusion.py' in the 'src' directory
+from .fusion import fuse_probs 
+
+# ------------------- Paths & Device ------------------- #
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_DIR = os.path.join(BASE_DIR, "models")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Define the common STATIC PATH PREFIX used by Django templates/models
+STATIC_PATH_PREFIX = "cervical/uploads/"
+
+
+# ------------------- Image Transform ------------------- #
+from torchvision import transforms
+IMG_TRANSFORM = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
+])
+
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Resolve models/ dynamically
+SRC_DIR    = os.path.dirname(__file__)                 # .../cervical_multimodal/src
+BASE_DIR   = os.path.dirname(SRC_DIR)                  # .../cervical_multimodal
+MODELS_DIR = os.path.join(BASE_DIR, "models")          # .../cervical_multimodal/models
+
+
+def _strip_prefix(state_dict, prefixes=("module.", "model.")):
+    """Remove common prefixes added by DataParallel / Lightning."""
+    if not isinstance(state_dict, dict):
+        return state_dict
+    new_sd = {}
+    for k, v in state_dict.items():
+        nk = k
+        for p in prefixes:
+            if nk.startswith(p):
+                nk = nk[len(p):]
+        new_sd[nk] = v
+    return new_sd
+
+
+def _infer_num_classes(saved_classes, state_dict):
+    """Prefer explicit classes; otherwise infer from fc.weight shape; else default to 2."""
+    if saved_classes is not None:
+        try:
+            return int(len(saved_classes))
+        except Exception:
+            pass
+
+    # Try from classifier weight/bias
+    for key in ("fc.weight", "classifier.weight"):
+        if key in state_dict and state_dict[key].ndim == 2:
+            return int(state_dict[key].shape[0])
+
+    # Fallback
+    return 2
+
+
+def load_image_model():
+    """
+    Load a ResNet-18 model for inference and return (model, class_names).
+    Handles full model / state_dict / DataParallel / Lightning checkpoints.
+    """
+    candidates = [
+        os.path.join(MODELS_DIR, "image_cnn.pth"),
+        os.path.join(getattr(settings, "BASE_DIR", BASE_DIR), "models", "image_cnn.pth"),
+    ]
+    model_path = next((p for p in candidates if os.path.exists(p)), None)
+    if model_path is None:
+        raise FileNotFoundError(
+            "Image model not found. Place 'image_cnn.pth' in one of:\n- " + "\n- ".join(candidates)
+        )
+
+    ckpt = torch.load(model_path, map_location=device)
+    class_names = ckpt.get("classes", []) if isinstance(ckpt, dict) else []
+
+    if isinstance(ckpt, nn.Module):
+        model = ckpt.to(device).eval()
+        return model, class_names
+
+    if not isinstance(ckpt, dict):
+        raise RuntimeError("Unsupported checkpoint format for image_cnn.pth")
+
+    saved_classes = ckpt.get("classes", ckpt.get("class_names", None))
+    state_dict = ckpt.get("state_dict", ckpt)
+    state_dict = _strip_prefix(state_dict)
+
+    num_classes = _infer_num_classes(saved_classes, state_dict)
+    model = tvmodels.resnet18(weights=None)
+    model.fc = nn.Linear(model.fc.in_features, num_classes)
+
+    model.load_state_dict(state_dict, strict=False)
+    model.to(device).eval()
+    return model, (saved_classes or class_names or [])
+
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+MODELS_DIR = os.path.join(BASE_DIR, "models")
+
+def clinical_predict(features: dict, record_id: int | None = None):
+    """
+    Use saved artifacts (separate imputer, OHE, scaler, classifier).
+    Build EXACT training schema: numeric -> imputer, categorical -> OHE, then concat.
+    """
+    import os, joblib, numpy as np, pandas as pd
+
+    model       = joblib.load(os.path.join(MODELS_DIR, "clinical_xgb.joblib"))
+    scaler      = joblib.load(os.path.join(MODELS_DIR, "clinical_scaler.joblib"))
+    num_imp     = joblib.load(os.path.join(MODELS_DIR, "clinical_num_imputer.joblib"))
+    ohe         = joblib.load(os.path.join(MODELS_DIR, "clinical_ohe.joblib"))
+    feat_after  = joblib.load(os.path.join(MODELS_DIR, "clinical_feature_names.joblib"))
+
+    # Raw training columns by branch
+    if not hasattr(num_imp, "feature_names_in_"):
+        raise RuntimeError("Numeric imputer lacks feature_names_in_. Save numeric raw columns during training.")
+    num_cols = list(num_imp.feature_names_in_)
+    cat_cols = list(getattr(ohe, "feature_names_in_", []))
+    cat_choices = getattr(ohe, "categories_", None)
+
+    # --- Synthesize a full raw row with training names ---
+    row_num = {c: 0 for c in num_cols}  # numeric defaults
+    row_cat = {}
+    if cat_choices is not None:
+        for c, choices in zip(cat_cols, cat_choices):
+            row_cat[c] = (choices[0] if len(choices) else "Unknown")
+
+    ui = {
+        "age": features.get("age", 0),
+        "hpv_result": features.get("hpv_result", ""),
+        "smoking": features.get("smoking", 0),
+        "contraception": features.get("contraception", 0),
+        "sexual_history": features.get("sexual_history", 0),
+    }
+    numeric_map = {
+        "Age": "age",
+        "Smokes (years)": "smoking",
+        "Hormonal Contraceptives (years)": "contraception",
+        "Number of sexual partners": "sexual_history",  # adjust if training used a slightly different header
+    }
+    for train_col, ui_key in numeric_map.items():
+        if train_col in row_num and ui_key in ui:
+            row_num[train_col] = ui[ui_key]
+
+    # Normalize HPV and write to whichever categorical column exists
+    hpv_ui = str(ui.get("hpv_result", "")).strip().lower()
+    hpv_norm = "Positive" if hpv_ui in {"positive","pos","1","true","yes"} else \
+               "Negative" if hpv_ui in {"negative","neg","0","false","no"} else None
+    for hpv_col in ("HPV result", "Dx:HPV"):
+        if hpv_col in row_cat and hpv_norm is not None:
+            if cat_choices is not None and hpv_col in cat_cols:
+                idx = cat_cols.index(hpv_col)
+                trained = set(map(str, cat_choices[idx]))
+                row_cat[hpv_col] = hpv_norm if hpv_norm in trained else (next(iter(trained)) if trained else hpv_norm)
+            else:
+                row_cat[hpv_col] = hpv_norm
+
+    # --- Build branch DataFrames in the exact training column order ---
+    import pandas as pd, numpy as np
+    df_num = pd.DataFrame([row_num], columns=num_cols)
+    df_cat = pd.DataFrame([row_cat], columns=cat_cols).astype(str) if cat_cols else pd.DataFrame(index=[0])
+
+    # --- Transform like training ---
+    num_imp_arr = num_imp.transform(df_num)
+    df_num_imp = pd.DataFrame(num_imp_arr, columns=num_cols, index=df_num.index)
+
+    if cat_cols:
+        ohe_out = ohe.transform(df_cat)
+        # Handle both sparse and dense outputs
+        try:
+            ohe_arr = ohe_out.toarray()      # scipy.sparse
+        except AttributeError:
+            ohe_arr = np.asarray(ohe_out)    # already dense
+
+        # Feature name API across sklearn versions
+        if hasattr(ohe, "get_feature_names_out"):
+            ohe_cols = list(ohe.get_feature_names_out(cat_cols))
+        else:
+            ohe_cols = list(ohe.get_feature_names(cat_cols))
+
+        df_cat_ohe = pd.DataFrame(ohe_arr, columns=ohe_cols, index=df_cat.index)
+    else:
+        df_cat_ohe = pd.DataFrame(index=df_num.index)
+
+    # --- Combine numeric + encoded categoricals to the final layout ---
+    X_full = pd.concat([df_num_imp, df_cat_ohe], axis=1)
+
+    # Reindex to exact training order (AFTER OHE) if saved
+    if isinstance(feat_after, (list, tuple, np.ndarray)):
+        X_full = X_full.reindex(columns=list(feat_after), fill_value=0.0)
+
+    # --- Scale & predict ---
+    X_scaled = scaler.transform(X_full)
+    prob = float(model.predict_proba(X_scaled)[:, 1][0])
+    label = "High" if prob >= 0.005 else "Low"
+
+    # --- Optional SHAP (non-blocking) ---
+    shap_path = ""
+    try:
+        from .shap_explain import generate_shap
+        if record_id is not None:
+            # pass raw branch frames; SHAP will rebuild the same pipeline internally
+            raw_like = pd.concat([df_num, df_cat], axis=1)
+            shap_path = generate_shap(raw_like, record_id=record_id) or ""
+    except Exception as e:
+        print(f"[Warning] SHAP generation failed (non-fatal): {e}")
+
+    return prob, label, shap_path
+
+# ------------------- Image Prediction ------------------- #
+def image_predict(img_path, record_id):
+    try:
+        model, class_names = load_image_model()
+        model.eval()
+        img = Image.open(img_path).convert("RGB")
+        input_tensor = IMG_TRANSFORM(img).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            logits = model(input_tensor)
+            if logits.ndim == 1:
+                logits = logits.unsqueeze(0)
+            if logits.ndim == 2:
+                C = logits.size(1)
+            else:
+                logits = logits.view(logits.size(0), -1)
+                C = logits.size(1)
+
+            if C == 1:
+                # binary sigmoid head
+                prob_pos = torch.sigmoid(logits)[0, 0].item()
+                label = "High" if prob_pos >= 0.005 else "Low"
+                display_prob = prob_pos
+
+            elif C == 2:
+                # softmax over 2 classes
+                probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
+                # pick positive index: try to detect in class names; fallback idx=1
+                pos_idx = 1
+                if class_names and len(class_names) == 2:
+                    lower = [str(c).lower() for c in class_names]
+                    # heuristics for positive/high/abnormal mapping
+                    for i, name in enumerate(lower):
+                        if any(k in name for k in ("high", "abnormal", "cancer", "positive", "dys")):
+                            pos_idx = i
+                            break
+                prob_pos = float(probs[pos_idx])
+                label = "High" if prob_pos >= 0.005 else "Low"
+                display_prob = prob_pos
+
+            else:
+                # multi-class: show best class & its probability
+                probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
+                best_idx = int(probs.argmax())
+                display_prob = float(probs[best_idx])
+                # if we have names use them, else just High/Low on a 0.5 threshold is meaningless; show class
+                label = class_names[best_idx] if class_names and best_idx < len(class_names) else f"class_{best_idx}"
+
+        # Grad-CAM save + path normalisation (keep what you already have)
+        filename_base = f"record_{record_id}.png"
+        gradcam_save_path_abs = generate_gradcam(img, filename_base)
+        # Extract the relative path from 'cervical/static/' onwards
+        if gradcam_save_path_abs and 'cervical/static/' in gradcam_save_path_abs.replace('\\', '/'):
+            gradcam_static_path = gradcam_save_path_abs.replace('\\', '/').split('cervical/static/')[-1]
+        else:
+            # Fallback: include gradcam subdirectory
+            gradcam_static_path = os.path.join(
+                STATIC_PATH_PREFIX, "gradcam", os.path.basename(gradcam_save_path_abs)
+            ).replace("\\", "/")
+
+        return float(display_prob), label, gradcam_static_path
+
+    except Exception as e:
+        print("❌ Image predict error:", e)
+        return 0.0, "Low", ""
+
+# ------------------- Multimodal Prediction ------------------- #
+def multimodal_predict(img_path, clinical_features, record_id):
+    clin_prob, clin_label, shap_path = clinical_predict(clinical_features, record_id)
+    img_prob, img_label, gradcam_path = image_predict(img_path, record_id)
+
+    fused_score = fuse_probs(clin_prob, img_prob)
+    fused_label = "High" if float(fused_score) >= 0.005 else "Low"  # <-- 0.005 threshold
+
+    return {
+        "clinical_prob": float(clin_prob),
+        "clinical_label": "High" if float(clin_prob) >= 0.005 else "Low",  # normalized
+        "image_prob": float(img_prob),
+        "image_label": img_label,
+        "fused_score": float(fused_score),
+        "fused_label": fused_label,
+        "shap_path": shap_path,
+        "gradcam_path": gradcam_path
+    }
