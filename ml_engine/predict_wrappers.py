@@ -133,7 +133,7 @@ def clinical_predict(features: dict, record_id: int | None = None):
     cat_choices = getattr(ohe, "categories_", None)
 
     # --- Synthesize a full raw row with training names ---
-    row_num = {c: 0 for c in num_cols}  # numeric defaults
+    row_num = {c: np.nan for c in num_cols}  # numeric defaults to NaN for imputation
     row_cat = {}
     if cat_choices is not None:
         for c, choices in zip(cat_cols, cat_choices):
@@ -156,18 +156,36 @@ def clinical_predict(features: dict, record_id: int | None = None):
         if train_col in row_num and ui_key in ui:
             row_num[train_col] = ui[ui_key]
 
+    # --- Infer Categorical booleans from numeric values ---
+    # Smokes
+    if "Smokes" in row_cat:
+        # If user entered smoking years > 0, assume Smokes='1.0', else if explicitly 0 => '0.0', else let default
+        s_years = float(ui.get("smoking") or 0)
+        row_cat["Smokes"] = "1.0" if s_years > 0 else "0.0"
+
+    # Hormonal Contraceptives
+    if "Hormonal Contraceptives" in row_cat:
+        hc_years = float(ui.get("contraception") or 0)
+        row_cat["Hormonal Contraceptives"] = "1.0" if hc_years > 0 else "0.0"
+
     # Normalize HPV and write to whichever categorical column exists
     hpv_ui = str(ui.get("hpv_result", "")).strip().lower()
-    hpv_norm = "Positive" if hpv_ui in {"positive","pos","1","true","yes"} else \
-               "Negative" if hpv_ui in {"negative","neg","0","false","no"} else None
+    # Map to '1'/'0' as per OHE categories found in debug
+    hpv_norm = "1" if hpv_ui in {"positive","pos","1","true","yes"} else \
+               "0" if hpv_ui in {"negative","neg","0","false","no"} else None
+    
     for hpv_col in ("HPV result", "Dx:HPV"):
         if hpv_col in row_cat and hpv_norm is not None:
+            # Check if mapped value is valid for this column
             if cat_choices is not None and hpv_col in cat_cols:
                 idx = cat_cols.index(hpv_col)
+                # OHE categories are usually strings like '0', '1'
                 trained = set(map(str, cat_choices[idx]))
-                row_cat[hpv_col] = hpv_norm if hpv_norm in trained else (next(iter(trained)) if trained else hpv_norm)
+                if hpv_norm in trained:
+                     row_cat[hpv_col] = hpv_norm
             else:
-                row_cat[hpv_col] = hpv_norm
+                 # Fallback if validation not possible
+                 row_cat[hpv_col] = hpv_norm
 
     # --- Build branch DataFrames in the exact training column order ---
     import pandas as pd, numpy as np

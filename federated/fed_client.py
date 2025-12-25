@@ -134,7 +134,6 @@ def train_locally(client_id=None):
     client = CervicalClient(model, trainloader, valloader)
     
     # Connect to server
-    # We catch errors so the web view doesn't crash if FL server is down
     try:
         # Use a timeout or run in a separate thread/process in production.
         # For now, we run it. Note: 'start_numpy_client' is blocking. 
@@ -143,7 +142,12 @@ def train_locally(client_id=None):
             client=client
         )
     except Exception as e:
-        print(f"❌ Flower client failed to start/connect: {e}")
+        import traceback
+        error_msg = f"❌ Flower client failed to start/connect: {e}\n{traceback.format_exc()}"
+        print(error_msg)
+        # Log to file for troubleshooting
+        with open("client_error.log", "w", encoding="utf-8") as f:
+            f.write(error_msg)
 
 if __name__ == "__main__":
     # Test run

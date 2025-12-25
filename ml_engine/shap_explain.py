@@ -64,14 +64,10 @@ def _ensure_training_schema(df_in: pd.DataFrame):
     cat_choices = getattr(ohe, "categories_", None)
 
     # numeric defaults, override from df_in when present
-    row_num = {c: 0 for c in num_cols}
+    row_num = {c: np.nan for c in num_cols}
     for c in num_cols:
         if c in df_in.columns:
             row_num[c] = _safe_to_float(df_in.iloc[0][c])
-            # try:
-            #     row_num[c] = float(df_in.iloc[0][c])
-            # except Exception:
-            #     pass
 
     # categorical defaults = first seen category; override from df_in when present
     row_cat = {}

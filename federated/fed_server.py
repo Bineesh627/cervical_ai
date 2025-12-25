@@ -39,6 +39,7 @@ strategy = FedAvg(
     fraction_fit=1.0,  # Sample all clients in each round
     fraction_evaluate=1.0,
     min_fit_clients=1,  # Require at least one client to participate
+    min_evaluate_clients=1, # Allow evaluation with just 1 client
     min_available_clients=1,
     evaluate_metrics_aggregation_fn=weighted_average,
 )

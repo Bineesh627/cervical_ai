@@ -32,12 +32,24 @@ transform = transforms.Compose([
 class CervicalRecordDataset(Dataset):
     """PyTorch Dataset for CervicalRecord data."""
     def __init__(self, records: List[Dict], transform=None):
-        self.records = records
         self.transform = transform
         self.media_root = settings.MEDIA_ROOT 
+        
+        # Filter records to only include those with valid existing files
+        valid_records = []
+        for rec in records:
+            if not rec.get('image'):
+                continue
+            
+            image_path = os.path.join(self.media_root, rec['image'])
+            if os.path.isfile(image_path):
+                valid_records.append(rec)
+            else:
+                print(f"Dataset warning: Image not found at {image_path}, skipping.")
+                
+        self.records = valid_records
 
     def __len__(self):
-        # Filter out records where the image path is missing or invalid
         return len(self.records)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
@@ -69,13 +81,13 @@ class CervicalRecordDataset(Dataset):
 
             return image, torch.tensor(target, dtype=torch.long)
         
-        except FileNotFoundError:
-            print(f"File not found: {image_path}. Skipping record.")
-            # Return dummy data or handle the error as appropriate for FL
-            return torch.zeros((3, 224, 224)), torch.tensor(-1, dtype=torch.long)
         except Exception as e:
+            # Should not happen often if filtered, but safety net
             print(f"Error loading image {image_path}: {e}")
-            return torch.zeros((3, 224, 224)), torch.tensor(-1, dtype=torch.long)
+            # If we still fail, we must SKIP or fail hard. 
+            # Returning -1 crashes FL. Let's return a valid label 0 (Low) but zero-image.
+            # Ideally we shouldn't reach here.
+            return torch.zeros((3, 224, 224)), torch.tensor(0, dtype=torch.long)
 
 def load_local_data(client_id: int = None):
     """
