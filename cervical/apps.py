@@ -23,19 +23,31 @@ class CervicalConfig(AppConfig):
         
         if is_runserver and os.environ.get('RUN_MAIN') == 'true':
             import subprocess
+            import atexit
             from django.conf import settings
             
             print(" >> Starting Federated Learning Server in a subprocess...")
             
             # python fed_server.py
-            # We assume fed_server.py is in 'federated' dir relative to base
             base_dir = settings.BASE_DIR
             script_path = os.path.join(base_dir, 'federated', 'fed_server.py')
-            
-            # Use the same python interpreter
             python_exe = sys.executable
             
             try:
-                subprocess.Popen([python_exe, script_path])
+                # Start process
+                proc = subprocess.Popen([python_exe, script_path])
+                
+                # Ensure cleanup on exit
+                def cleanup_fl_server():
+                    if proc.poll() is None:
+                        print(" >> Terminating FL server subprocess...")
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            
+                atexit.register(cleanup_fl_server)
+                
             except Exception as e:
                 print(f" >> FAILED to start FL server subprocess: {e}")

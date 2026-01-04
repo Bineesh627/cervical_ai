@@ -101,8 +101,14 @@ def load_image_model():
     state_dict = ckpt.get("state_dict", ckpt)
     state_dict = _strip_prefix(state_dict)
 
-    num_classes = _infer_num_classes(saved_classes, state_dict)
-    
+    if saved_classes:
+        num_classes = len(saved_classes)
+        class_names = saved_classes
+    else:
+        num_classes = _infer_num_classes(saved_classes, state_dict)
+        print("⚠️ Warning: No class names in checkpoint. Assuming alphabetical order.")
+        class_names = [f"Class_{i}" for i in range(num_classes)]
+
     # Build ViT model
     try:
         model = tvmodels.vit_b_16(weights=None)

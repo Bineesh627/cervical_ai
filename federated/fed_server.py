@@ -60,14 +60,19 @@ def start_server():
     SERVER_ADDRESS = "127.0.0.1:8095" 
     
     # Flower server configuration
-    try:
-        fl.server.start_server(
-            server_address=SERVER_ADDRESS,
-            config=fl.server.ServerConfig(num_rounds=3),
-            strategy=strategy,
-        )
-    except Exception as e:
-        print(f"FAILED to start FL server (possibly port in use): {e}")
+    while True:
+        try:
+            print("🚀 Starting/Restarting FL server session...")
+            fl.server.start_server(
+                server_address=SERVER_ADDRESS,
+                config=fl.server.ServerConfig(num_rounds=3),
+                strategy=strategy,
+            )
+            print("✅ FL session finished.")
+        except Exception as e:
+            print(f"FAILED to start FL server (possibly port in use): {e}")
+            import time
+            time.sleep(5) # Wait before retry
 
 if __name__ == "__main__":
     start_server()

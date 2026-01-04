@@ -80,6 +80,71 @@ def load_model():
     model.to(device).eval()
     return model
 
+class ViTGradCAM:
+    def __init__(self, model, target_layer):
+        self.model = model
+        self.target_layer = target_layer
+        self.activations = None
+        self.gradients = None
+        self.hooks = []
+        self._register_hooks()
+
+    def _register_hooks(self):
+        def forward_hook(module, input, output):
+            self.activations = output.detach()
+
+        def backward_hook(module, grad_input, grad_output):
+            self.gradients = grad_output[0].detach()
+
+        self.hooks.append(self.target_layer.register_forward_hook(forward_hook))
+        self.hooks.append(self.target_layer.register_full_backward_hook(backward_hook))
+
+    def __call__(self, class_idx, scores):
+        # Zero gradients
+        self.model.zero_grad()
+        
+        # Backpropagate
+        loss = scores[0, class_idx]
+        loss.backward(retain_graph=True)
+        
+        # Get activations and gradients
+        # Shape: (B, 197, 768)
+        act = self.activations
+        grad = self.gradients
+        
+        # Handle ViT shapes: Remove CLS token (index 0) if present (197 tokens)
+        if act.shape[1] == 197:
+            act = act[:, 1:, :] 
+            grad = grad[:, 1:, :]
+            
+        # Reshape to (B, C, H, W) -> (1, 768, 14, 14)
+        # Assuming square grid
+        num_tokens = act.shape[1]
+        grid_size = int(np.sqrt(num_tokens))
+        embed_dim = act.shape[2]
+        
+        act = act.permute(0, 2, 1).reshape(1, embed_dim, grid_size, grid_size)
+        grad = grad.permute(0, 2, 1).reshape(1, embed_dim, grid_size, grid_size)
+        
+        # Compute weights (Global Average Pooling of gradients)
+        weights = grad.mean(dim=(2, 3), keepdim=True)
+        
+        # Weighted combination
+        cam = (weights * act).sum(dim=1, keepdim=True)
+        
+        # ReLU
+        cam = torch.nn.functional.relu(cam)
+        
+        # Clean up hooks
+        # for h in self.hooks: h.remove() # Keep hooks for reuse or managing lifecycle? 
+        # For this script, usage implies one-off. But better keep it simple.
+        
+        return cam
+        
+    def remove_hooks(self):
+        for h in self.hooks:
+            h.remove()
+
 # --- Generate Grad-CAM ---
 def generate_gradcam(img_input, filename_base):
     """
@@ -97,16 +162,20 @@ def generate_gradcam(img_input, filename_base):
             img = img_input
 
         model = load_model()
-        # For ViT, we typically target the last encoder layer's norm or similar
-        # model.encoder.layers[-1].ln_1 is a common choice for ViT-B/16 in torchvision
-        cam_extractor = SmoothGradCAMpp(model, target_layer=model.encoder.layers[-1].ln_1)
+        
+        # USE CUSTOM ViT EXTRACTOR
+        # model.encoder.layers[-1].ln_1 is a common choice for ViT-B/16
+        cam_extractor = ViTGradCAM(model, target_layer=model.encoder.layers[-1].ln_1)
 
         input_tensor = transform(img).unsqueeze(0).to(device)
         output = model(input_tensor)
         pred_class = int(output.argmax(dim=1).item())
 
-        activation_map = cam_extractor(pred_class, output)
-        activation = activation_map[0].squeeze().cpu().numpy()
+        # Returns directly the (B, 1, H, W) cam
+        cam_tensor = cam_extractor(pred_class, output)
+        
+        # Squeeze to (H, W) -> (14, 14)
+        activation = cam_tensor.squeeze().cpu().detach().numpy()
 
         # Normalize the activation map
         act = (activation - activation.min()) / (activation.max() - activation.min() + 1e-8)
