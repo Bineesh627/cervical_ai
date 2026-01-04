@@ -137,9 +137,9 @@ def train_locally(client_id=None):
     try:
         # Use a timeout or run in a separate thread/process in production.
         # For now, we run it. Note: 'start_numpy_client' is blocking. 
-        fl.client.start_numpy_client(
-            server_address="127.0.0.1:8091", 
-            client=client
+        fl.client.start_client(
+            server_address="127.0.0.1:8095", 
+            client=client.to_client()
         )
     except Exception as e:
         import traceback

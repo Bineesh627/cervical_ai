@@ -12,8 +12,8 @@ urlpatterns = [
     path('signup/patient/', views.signup_patient, name='signup_patient'),
     path('signup/doctor/', views.signup_doctor, name='signup_doctor'),
     
-    # FIX: Rename the URL name to 'user_login' for consistency
-    path('login/', views.user_login, name='user_login'), 
+    # FIX: Rename the URL name to 'login' for consistency
+    path('login/', views.user_login, name='login'), 
     
     path('logout/', views.user_logout, name='logout'),
 

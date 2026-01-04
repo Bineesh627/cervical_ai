@@ -16,7 +16,13 @@ try:
     from .setup_django import setup_django_environment
 except ImportError:
     from setup_django import setup_django_environment
-setup_django_environment()
+
+import django
+from django.conf import settings
+
+# Only setup if not already configured (avoids issues when imported in apps.py)
+if not settings.configured:
+    setup_django_environment()
 from cervical.models import PatientRecord # Example model import
 
 # ====================================================================
@@ -51,14 +57,17 @@ def start_server():
     print("Starting Flower server...")
     
     # 🛑 FIX: Use a new, less common port (8088) for the server.
-    SERVER_ADDRESS = "0.0.0.0:8091" 
+    SERVER_ADDRESS = "127.0.0.1:8095" 
     
     # Flower server configuration
-    fl.server.start_server(
-        server_address=SERVER_ADDRESS,
-        config=fl.server.ServerConfig(num_rounds=3),
-        strategy=strategy,
-    )
-    
+    try:
+        fl.server.start_server(
+            server_address=SERVER_ADDRESS,
+            config=fl.server.ServerConfig(num_rounds=3),
+            strategy=strategy,
+        )
+    except Exception as e:
+        print(f"FAILED to start FL server (possibly port in use): {e}")
+
 if __name__ == "__main__":
     start_server()

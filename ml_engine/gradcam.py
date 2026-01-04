@@ -13,7 +13,7 @@ SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SRC_DIR)  # cervical_multimodal directory
 
 # Path where the trained PyTorch model is located (assuming it's in a 'models' folder)
-MODEL_PATH = os.path.join(BASE_DIR, "models", "image_cnn.pth")
+MODEL_PATH = os.path.join(BASE_DIR, "models", "image_vit.pth")
 GRADCAM_OUTPUT_DIR = os.path.join(BASE_DIR, "cervical", "static", "cervical", "uploads", "gradcam")
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -46,17 +46,28 @@ def load_model():
     # Determine number of classes
     if saved_classes is None:
         print("⚠️ Warning: Class names not found in checkpoint. Inferring from model structure.")
-        # Try to infer from fc.weight shape in state_dict
-        if 'fc.weight' in state_dict:
-            num_classes = state_dict['fc.weight'].shape[0]
+        # Try to infer from heads.head.weight shape in state_dict (ViT specific)
+        if 'heads.head.weight' in state_dict:
+            num_classes = state_dict['heads.head.weight'].shape[0]
+        elif 'head.weight' in state_dict: # Some ViT variants
+             num_classes = state_dict['head.weight'].shape[0]
         else:
             print("⚠️ Warning: Could not infer number of classes. Assuming 5 classes.")
             num_classes = 5
     else:
         num_classes = len(saved_classes)
 
-    model = tvmodels.resnet18(weights=None)
-    model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
+    try:
+        model = tvmodels.vit_b_16(weights=None)
+    except:
+        model = tvmodels.vit_b_16(pretrained=False)
+
+    # ViT Head Replacement
+    if hasattr(model, 'heads') and hasattr(model.heads, 'head'):
+        in_features = model.heads.head.in_features
+        model.heads = torch.nn.Linear(in_features, num_classes)
+    else:
+        model.heads = torch.nn.Linear(768, num_classes)
     
     # Load state dict, handling potential prefix issues
     try:
@@ -86,7 +97,9 @@ def generate_gradcam(img_input, filename_base):
             img = img_input
 
         model = load_model()
-        cam_extractor = SmoothGradCAMpp(model, target_layer=model.layer4[-1])
+        # For ViT, we typically target the last encoder layer's norm or similar
+        # model.encoder.layers[-1].ln_1 is a common choice for ViT-B/16 in torchvision
+        cam_extractor = SmoothGradCAMpp(model, target_layer=model.encoder.layers[-1].ln_1)
 
         input_tensor = transform(img).unsqueeze(0).to(device)
         output = model(input_tensor)

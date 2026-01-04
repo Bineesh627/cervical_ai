@@ -74,17 +74,17 @@ def _infer_num_classes(saved_classes, state_dict):
 
 def load_image_model():
     """
-    Load a ResNet-18 model for inference and return (model, class_names).
+    Load a Vision Transformer (ViT) model for inference and return (model, class_names).
     Handles full model / state_dict / DataParallel / Lightning checkpoints.
     """
     candidates = [
-        os.path.join(MODELS_DIR, "image_cnn.pth"),
-        os.path.join(getattr(settings, "BASE_DIR", BASE_DIR), "models", "image_cnn.pth"),
+        os.path.join(MODELS_DIR, "image_vit.pth"),
+        os.path.join(getattr(settings, "BASE_DIR", BASE_DIR), "models", "image_vit.pth"),
     ]
     model_path = next((p for p in candidates if os.path.exists(p)), None)
     if model_path is None:
         raise FileNotFoundError(
-            "Image model not found. Place 'image_cnn.pth' in one of:\n- " + "\n- ".join(candidates)
+            "Image model not found. Place 'image_vit.pth' in one of:\n- " + "\n- ".join(candidates)
         )
 
     ckpt = torch.load(model_path, map_location=device)
@@ -95,15 +95,27 @@ def load_image_model():
         return model, class_names
 
     if not isinstance(ckpt, dict):
-        raise RuntimeError("Unsupported checkpoint format for image_cnn.pth")
+        raise RuntimeError("Unsupported checkpoint format for image_vit.pth")
 
     saved_classes = ckpt.get("classes", ckpt.get("class_names", None))
     state_dict = ckpt.get("state_dict", ckpt)
     state_dict = _strip_prefix(state_dict)
 
     num_classes = _infer_num_classes(saved_classes, state_dict)
-    model = tvmodels.resnet18(weights=None)
-    model.fc = nn.Linear(model.fc.in_features, num_classes)
+    
+    # Build ViT model
+    try:
+        model = tvmodels.vit_b_16(weights=None)
+    except:
+        model = tvmodels.vit_b_16(pretrained=False) # Fallback for older versions
+
+    # ViT Head Replacement
+    if hasattr(model, 'heads') and hasattr(model.heads, 'head'):
+        in_features = model.heads.head.in_features
+        model.heads = nn.Linear(in_features, num_classes)
+    else:
+        # Fallback/Safety
+        model.heads = nn.Linear(768, num_classes)
 
     model.load_state_dict(state_dict, strict=False)
     model.to(device).eval()
@@ -146,6 +158,21 @@ def clinical_predict(features: dict, record_id: int | None = None):
         "contraception": features.get("contraception", 0),
         "sexual_history": features.get("sexual_history", 0),
     }
+
+    # Handle STDs:HPV if it is numeric
+    hpv_ui = str(ui.get("hpv_result", "")).strip().lower()
+    is_positive = hpv_ui in {"positive","pos","1","true","yes"}
+    
+    if "STDs:HPV" in row_num and is_positive:
+        row_num["STDs:HPV"] = 1.0
+        # If HPV is positive, STD count should be at least 1
+        if "STDs: Number of diagnosis" in row_num:
+            row_num["STDs: Number of diagnosis"] = 1.0
+        if "STDs (number)" in row_num:
+             row_num["STDs (number)"] = 1.0
+             
+    # Dx:HPV is typically categorical, handled in OHE loop below
+
     numeric_map = {
         "Age": "age",
         "Smokes (years)": "smoking",
@@ -161,12 +188,28 @@ def clinical_predict(features: dict, record_id: int | None = None):
     if "Smokes" in row_cat:
         # If user entered smoking years > 0, assume Smokes='1.0', else if explicitly 0 => '0.0', else let default
         s_years = float(ui.get("smoking") or 0)
-        row_cat["Smokes"] = "1.0" if s_years > 0 else "0.0"
+        # Try to match the format in cat_choices if possible
+        val = "1.0" if s_years > 0 else "0.0"
+        # Check against trained categories if we can find them
+        if cat_choices is not None and "Smokes" in cat_cols:
+            idx = cat_cols.index("Smokes")
+            trained = set(map(str, cat_choices[idx]))
+            if val not in trained and "1" in trained: val = "1"
+            if val not in trained and "0" in trained and s_years == 0: val = "0"
+            if val not in trained and "True" in trained: val = "True" if s_years > 0 else "False"
+        row_cat["Smokes"] = val
 
     # Hormonal Contraceptives
     if "Hormonal Contraceptives" in row_cat:
         hc_years = float(ui.get("contraception") or 0)
-        row_cat["Hormonal Contraceptives"] = "1.0" if hc_years > 0 else "0.0"
+        val = "1.0" if hc_years > 0 else "0.0"
+        if cat_choices is not None and "Hormonal Contraceptives" in cat_cols:
+            idx = cat_cols.index("Hormonal Contraceptives")
+            trained = set(map(str, cat_choices[idx]))
+            if val not in trained and "1" in trained: val = "1"
+            if val not in trained and "0" in trained and hc_years == 0: val = "0"
+            if val not in trained and "True" in trained: val = "True" if hc_years > 0 else "False"
+        row_cat["Hormonal Contraceptives"] = val
 
     # Normalize HPV and write to whichever categorical column exists
     hpv_ui = str(ui.get("hpv_result", "")).strip().lower()
@@ -174,15 +217,22 @@ def clinical_predict(features: dict, record_id: int | None = None):
     hpv_norm = "1" if hpv_ui in {"positive","pos","1","true","yes"} else \
                "0" if hpv_ui in {"negative","neg","0","false","no"} else None
     
-    for hpv_col in ("HPV result", "Dx:HPV"):
+    for hpv_col in ("HPV result", "Dx:HPV", "STDs:HPV"):
         if hpv_col in row_cat and hpv_norm is not None:
             # Check if mapped value is valid for this column
             if cat_choices is not None and hpv_col in cat_cols:
                 idx = cat_cols.index(hpv_col)
                 # OHE categories are usually strings like '0', '1'
                 trained = set(map(str, cat_choices[idx]))
+
                 if hpv_norm in trained:
                      row_cat[hpv_col] = hpv_norm
+                elif (hpv_norm + ".0") in trained:
+                     row_cat[hpv_col] = hpv_norm + ".0"
+                elif hpv_norm == "1" and "True" in trained:
+                     row_cat[hpv_col] = "True"
+                elif hpv_norm == "0" and "False" in trained:
+                     row_cat[hpv_col] = "False"
             else:
                  # Fallback if validation not possible
                  row_cat[hpv_col] = hpv_norm
@@ -225,6 +275,25 @@ def clinical_predict(features: dict, record_id: int | None = None):
     X_scaled = scaler.transform(X_full)
     prob = float(model.predict_proba(X_scaled)[:, 1][0])
     label = "High" if prob >= 0.005 else "Low"
+
+    # --- Clinical Rule Override ---
+    # HPV Positive is a strong cancer risk factor - ensure High label
+    hpv_input = str(features.get("hpv_result", "")).strip().lower()
+    is_hpv_positive = hpv_input in {"positive", "pos", "1", "true", "yes"}
+    is_hpv_unknown = hpv_input in {"unknown", "", "none", "n/a"}
+    
+    if is_hpv_positive:
+        # HPV+ patients should always be High risk
+        # But preserve model's relative scoring for prioritization
+        if prob < 0.5:
+            # Boost low scores to at least 50% (still preserves relative differences)
+            prob = max(prob * 10, 0.5)  # 0.01 → 0.5, 0.1 → 0.5, 0.2 → 0.5, 0.6 → 0.6
+        label = "High"  # Always High for HPV+
+    elif is_hpv_unknown:
+        # Unknown HPV: rely on model's prediction but don't force High
+        # Model already handles this as missing data
+        pass
+    # else: HPV Negative - use model prediction as-is
 
     # --- Optional SHAP (non-blocking) ---
     shap_path = ""
