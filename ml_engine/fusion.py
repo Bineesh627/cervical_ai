@@ -5,7 +5,7 @@ from PIL import Image
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
-IMG_MODEL_PATH = os.path.join(MODELS_DIR, "image_cnn.pth")
+IMG_MODEL_PATH = os.path.join(MODELS_DIR, "image_vit.pth")
 CLIN_MODEL_PATH = os.path.join(MODELS_DIR, "clinical_xgb.joblib")
 SCALER_PATH = os.path.join(MODELS_DIR, "clinical_scaler.joblib")
 ENC_PATH = os.path.join(MODELS_DIR, "clinical_ohe.joblib")

@@ -291,9 +291,8 @@ def clinical_predict(features: dict, record_id: int | None = None):
     if is_hpv_positive:
         # HPV+ patients should always be High risk
         # But preserve model's relative scoring for prioritization
-        if prob < 0.5:
-            # Boost low scores to at least 50% (still preserves relative differences)
-            prob = max(prob * 10, 0.5)  # 0.01 → 0.5, 0.1 → 0.5, 0.2 → 0.5, 0.6 → 0.6
+        # Map original probability [0, 1] to [0.5, 1.0]
+        prob = 0.5 + (prob * 0.5)
         label = "High"  # Always High for HPV+
     elif is_hpv_unknown:
         # Unknown HPV: rely on model's prediction but don't force High
@@ -303,16 +302,22 @@ def clinical_predict(features: dict, record_id: int | None = None):
 
     # --- Optional SHAP (non-blocking) ---
     shap_path = ""
+    shap_explanation = ""
     try:
         from .shap_explain import generate_shap
+        from .llm_explain import generate_explanation
+        
         if record_id is not None:
             # pass raw branch frames; SHAP will rebuild the same pipeline internally
             raw_like = pd.concat([df_num, df_cat], axis=1)
-            shap_path = generate_shap(raw_like, record_id=record_id) or ""
+            shap_path, top_features = generate_shap(raw_like, record_id=record_id)
+            if shap_path: # Only generate explanation if SHAP succeeded
+                 shap_explanation = generate_explanation(top_features)
+
     except Exception as e:
         print(f"[Warning] SHAP generation failed (non-fatal): {e}")
 
-    return prob, label, shap_path
+    return prob, label, shap_path, shap_explanation
 
 # ------------------- Image Prediction ------------------- #
 def image_predict(img_path, record_id):
@@ -382,7 +387,7 @@ def image_predict(img_path, record_id):
 
 # ------------------- Multimodal Prediction ------------------- #
 def multimodal_predict(img_path, clinical_features, record_id):
-    clin_prob, clin_label, shap_path = clinical_predict(clinical_features, record_id)
+    clin_prob, clin_label, shap_path, shap_explanation = clinical_predict(clinical_features, record_id)
     img_prob, img_label, gradcam_path = image_predict(img_path, record_id)
 
     fused_score = fuse_probs(clin_prob, img_prob)
@@ -395,6 +400,8 @@ def multimodal_predict(img_path, clinical_features, record_id):
         "image_label": img_label,
         "fused_score": float(fused_score),
         "fused_label": fused_label,
+        "fused_label": fused_label,
         "shap_path": shap_path,
+        "shap_explanation": shap_explanation,
         "gradcam_path": gradcam_path
     }

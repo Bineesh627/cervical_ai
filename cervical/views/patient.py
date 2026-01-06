@@ -55,10 +55,10 @@ def clinical_entry(request):
 
         # --- Predict (SHAP must be non-fatal) ---
         try:
-            score, _label_from_model, shap_path = clinical_predict(features, record_id=rec.id)
+            score, _label_from_model, shap_path, shap_explanation = clinical_predict(features, record_id=rec.id)
         except Exception as e:
             print(f"[Warning] clinical_predict failed (non-fatal): {e}")
-            score, shap_path = 0.0, ""
+            score, shap_path, shap_explanation = 0.0, "", ""
 
         try:
             score_dec = Decimal(str(score))        # preserve exact text form
@@ -67,6 +67,8 @@ def clinical_entry(request):
 
         rec.clinical_risk_score = score_dec
         rec.clinical_pred_label = "High" if float(score_dec) >= 0.005 else "Low"
+        rec.clinical_shap_path = clean_path(shap_path)
+        rec.shap_explanation = shap_explanation
         rec.save()
 
         messages.success(
@@ -128,6 +130,7 @@ def upload_pap(request):
             # --- paths (relative for {% static %}) ---
             rec.gradcam_path        = clean_path(result.get("gradcam_path") or "")
             rec.clinical_shap_path  = clean_path(result.get("shap_path") or "")
+            rec.shap_explanation    = result.get("shap_explanation", "")
 
             print(f"\n{'='*60}")
             print(f"Saving record with values:")

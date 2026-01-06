@@ -76,6 +76,7 @@ class PatientRecord(models.Model):
     clinical_risk_score = models.DecimalField(max_digits=24, decimal_places=18, null=True, blank=True)
     clinical_pred_label = models.CharField(max_length=32, blank=True)
     clinical_shap_path = models.CharField(max_length=256, blank=True)
+    shap_explanation = models.TextField(blank=True)
 
     image = models.ImageField(upload_to=pap_image_upload_to, null=True, blank=True)
     image_prob = models.FloatField(null=True, blank=True)

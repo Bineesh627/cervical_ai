@@ -161,9 +161,8 @@ def generate_shap(df_raw_like: pd.DataFrame, record_id: int) -> str:
         plt.savefig(save_path, bbox_inches='tight')
         plt.close()
 
-        # return static-relative path that templates can render
-        return os.path.join("cervical", "uploads", "shap", f"record_{record_id}_shap.png").replace("\\", "/")
-
     except Exception as e:
         print("[Warning] SHAP generation failed (non-fatal):", e)
-        return ""
+        return "", {}
+
+    return os.path.join("cervical", "uploads", "shap", f"record_{record_id}_shap.png").replace("\\", "/"), dict(zip(top_feats, top_vals))

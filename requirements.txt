@@ -19,3 +19,4 @@ requests
 python-dotenv
 torchcam
 shap
+boto3
