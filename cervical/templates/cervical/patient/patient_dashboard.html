@@ -285,17 +285,33 @@
 
           <!-- Fused -->
           <div class="prediction-tile fused-tile">
-            <div class="tile-header"><i class="fas fa-brain"></i> Fused Final Result</div>
+            <div class="tile-header"><i class="fas fa-brain"></i> Fused Result</div>
             <div class="tile-body">
-              <span class="tile-label-final label-{{ r.fused_label|default_if_none:'n-a'|lower }}">
-                {{ r.fused_label|default_if_none:'N/A' }}
+              <span class="tile-label-final label-{{ r.fused_label|lower }}">
+                {{ r.fused_label|default:'N/A' }}
               </span>
               <span class="tile-score" title="{{ r.fused_score }}">
-                {% if r.fused_score is not None %}
-                  Fusion Score: {{ r.fused_score|floatformat:10 }}
+                Fusion Score: {{ r.fused_score|floatformat:4|default:'N/A' }}
+              </span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Final Result (Centered Row) -->
+        <div class="final-result-row">
+          <div class="prediction-tile fused-tile">
+            <div class="tile-header"><i class="fas fa-chart-line"></i> Final Result</div>
+            <div class="tile-body">
+              <span class="tile-label-final">
+                {% if r.final_percentage is not None %}
+                  {{ r.final_percentage|floatformat:1 }}%
                 {% else %}
-                  Fusion Score: N/A
+                  N/A
                 {% endif %}
+              </span>
+              <span class="tile-score">
+                Weighted Score
               </span>
             </div>
           </div>
@@ -596,6 +612,20 @@
     grid-template-columns: repeat(3, 1fr);
     gap: 20px;
     margin-bottom: 25px;
+  }
+
+  .final-result-row {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 25px;
+  }
+
+  .final-result-row .prediction-tile {
+    width: 100%;
+    max-width: 350px;
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%);
+    border: 1px solid var(--color-accent-secondary);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   }
 
   .prediction-tile {

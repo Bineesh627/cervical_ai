@@ -24,6 +24,27 @@ def patient_dashboard(request):
     profile = get_object_or_404(PatientProfile, user=request.user)
     # Prefetch the doubts for each record for efficient rendering
     records = PatientRecord.objects.filter(patient=profile).prefetch_related('doubts').order_by('-created_at')
+
+    # Calculate weighted average percentage for each record
+    for r in records:
+        if r.clinical_risk_score is not None and r.fused_score is not None:
+            try:
+                risk_score = float(r.clinical_risk_score)
+                fusion_score = float(r.fused_score)
+                
+                risk_weight = 0.6
+                fusion_weight = 0.4
+
+                weighted_avg = (
+                    risk_score * risk_weight +
+                    fusion_score * fusion_weight
+                ) / (risk_weight + fusion_weight)
+
+                r.final_percentage = weighted_avg * 100
+            except (ValueError, TypeError):
+                r.final_percentage = None
+        else:
+            r.final_percentage = None
     
     # Template path will be updated to 'cervical/patient/patient_dashboard.html'
     return render(request, 'cervical/patient/patient_dashboard.html', {
